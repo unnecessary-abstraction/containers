@@ -1,0 +1,88 @@
+# Copyright (C) 2022 Paul Barker
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build images
+on:
+  push:
+    branches:
+      - main
+      - pbarker/ci
+  schedule:
+    - cron: '0 23 * * 0'
+
+jobs:
+  yacron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/unnecessary-abstraction/yacron
+          labels: |
+            org.opencontainers.image.title=yacron
+          tags: |
+            type=schedule,pattern={{date 'YYYYMMDD'}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+
+      - name: Login to GHCR
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v2
+        with:
+          pull: true
+          push: true
+          context: yacron
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  yacron-derivatives:
+    runs-on: ubuntu-latest
+    needs: yacron
+    strategy:
+      matrix:
+        image:
+          - mirrorshades
+          - rsnapshot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/unnecessary-abstraction/${{ matrix.image }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+          tags: |
+            type=schedule,pattern={{date 'YYYYMMDD'}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+
+      - name: Login to GHCR
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v2
+        with:
+          pull: true
+          push: true
+          context: ${{ matrix.image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/unnecessary-abstraction/yacron:sha-${{ github.SHA }}
